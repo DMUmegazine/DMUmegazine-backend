@@ -1,0 +1,25 @@
+# Node.js (Frontend)
+node_modules/
+.next/
+dist/
+.env*
+npm-debug.log*
+
+# Python (Backend)
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+.pytest_cache/
+
+# Docker & DB
+Postgres_data/
+db_data/
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
