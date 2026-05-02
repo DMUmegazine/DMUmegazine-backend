@@ -26,3 +26,5 @@ db_data/
 # OS
 .DS_Store
 Thumbs.db
+app/api/__MACOSX/._apiSecrets.py
+app/api/__MACOSX/._dbSecrets.py
