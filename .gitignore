@@ -28,3 +28,4 @@ db_data/
 Thumbs.db
 app/api/__MACOSX/._apiSecrets.py
 app/api/__MACOSX/._dbSecrets.py
+.env
