@@ -12,25 +12,22 @@ import re
 import ssl
 from datetime import datetime
 
+# /app 경로가 없을 경우 Python 모듈 탐색 경로에 추가
 if "/app" not in sys.path:
     sys.path.append("/app")
-    
-try:
-    from apiSecrets import NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
-except ImportError:
-    NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "기본값")
-    NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "기본값")
 
+# .env에서 네이버 API 인증 정보 로드
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-# ----- 텍스트 정제 함수 -----
+
+# ----- 텍스트 정제 -----
 def clean_news_text(text: str) -> str:
     if not text:
         return ""
-    # HTML 태그 제거[cite: 8, 18]
-    text = re.sub(r'<[^>]*>', '', text)
-    # 특수 기호 복원 (naverNews 로직 반영)[cite: 8, 16, 18]
+    text = re.sub(r"<[^>]*>", "", text)
     text = text.replace("&quot;", '"')
     text = text.replace("&amp;", "&")
     text = text.replace("&lt;", "<")
@@ -39,56 +36,65 @@ def clean_news_text(text: str) -> str:
     text = text.replace("&middot;", "·")
     return text.strip()
 
+
 @router.post("/collect")
 def collect_naver_news(query: str, db: Session = Depends(get_db)):
-    # 1. 네이버 뉴스 검색 설정
+
     client_id = NAVER_CLIENT_ID
     client_secret = NAVER_CLIENT_SECRET
-    
+
+    # 한글 키워드 URL 인코딩
     encText = urllib.parse.quote(query)
-    url = f"https://openapi.naver.com/v1/search/news.json?query={encText}&display=1"
-    
+    url = f"https://openapi.naver.com/v1/search/news.json?query={encText}"
+
     request = urllib.request.Request(url)
     request.add_header("X-Naver-Client-Id", client_id)
     request.add_header("X-Naver-Client-Secret", client_secret)
-    
-    # SSL 인증서 문제 방지 (naverNews 로직 반영)[cite: 8, 16]
+
+    # SSL 인증서 검증 우회 (일부 환경에서 인증서 오류 방지)
     context = ssl._create_unverified_context()
-    
+
     try:
         with urllib.request.urlopen(request, context=context) as response:
             items = json.loads(response.read().decode("utf-8")).get("items", [])
             saved_count = 0
-            
+
             for item in items:
-                # 2. 중복 체크 (originallink 기준)[cite: 8, 18, 19]
-                link = item.get('originallink')
-                exists = db.query(NewsMetadata).filter(NewsMetadata.originallink == link).first()
-                
+                # originallink 기준으로 이미 저장된 뉴스인지 확인
+                link = item.get("originallink")
+                exists = (
+                    db.query(NewsMetadata)
+                    .filter(NewsMetadata.originallink == link)
+                    .first()
+                )
+
                 if not exists:
-                    # 3. 날짜 변환 로직 추가 (naverNews 로직 반영)[cite: 8, 16]
+                    # datetime 객체로 날짜 변환
                     pub_date_str = item.get("pubDate", "")
                     try:
-                        # 네이버 날짜 포맷: "Tue, 29 Apr 2026 14:30:00 +0900"[cite: 8, 16]
-                        published_at = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
+                        published_at = datetime.strptime(
+                            pub_date_str, "%a, %d %b %Y %H:%M:%S %z"
+                        )
                     except:
-                        published_at = None
+                        published_at = None  # 날짜 파싱 실패 시 None으로 저장
 
-                    # 4. 데이터 정제 및 객체 생성[cite: 18, 19]
+                    # 텍스트 정제 후 DB 객체 생성
                     new_news = NewsMetadata(
-                        news_id=str(uuid.uuid4()),
-                        title=clean_news_text(item.get('title')),
-                        description=clean_news_text(item.get('description')),
+                        news_id=uuid.uuid4(),
+                        title=clean_news_text(item.get("title")),
+                        description=clean_news_text(item.get("description")),
                         originallink=link,
-                        link=item.get('link'),
-                        published_at=published_at # 추가된 날짜 데이터[cite: 8, 11]
+                        link=item.get("link"),
+                        published_at=published_at,
                     )
                     db.add(new_news)
                     saved_count += 1
-            
+
+            # 모든 뉴스 저장 완료 후 한 번에 커밋
             db.commit()
             return {"status": "success", "query": query, "new_saved": saved_count}
-            
+
     except Exception as e:
+        # 오류 발생 시 롤백
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
