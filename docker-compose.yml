@@ -27,6 +27,8 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    volumes:
+      - ./chroma_data:/app/chroma_data
     depends_on:
       db:
         condition: service_healthy # DB가 healthcheck를 통과한 후에만 백엔드 시작

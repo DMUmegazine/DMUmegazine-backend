@@ -19,8 +19,10 @@ env/
 Postgres_data/
 db_data/
 .docker/
+chroma_data/
 
 # OS
 .DS_Store
 Thumbs.db
 .env
+

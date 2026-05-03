@@ -11,6 +11,8 @@ import urllib.parse
 import re
 import ssl
 from datetime import datetime
+from fastapi import BackgroundTasks
+from app.services.vector_service import vector_embedding
 
 # /app 경로가 없을 경우 Python 모듈 탐색 경로에 추가
 if "/app" not in sys.path:
@@ -38,7 +40,7 @@ def clean_news_text(text: str) -> str:
 
 
 @router.post("/collect")
-def collect_naver_news(query: str, db: Session = Depends(get_db)):
+def collect_naver_news(query: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
 
     client_id = NAVER_CLIENT_ID
     client_secret = NAVER_CLIENT_SECRET
@@ -92,6 +94,9 @@ def collect_naver_news(query: str, db: Session = Depends(get_db)):
 
             # 모든 뉴스 저장 완료 후 한 번에 커밋
             db.commit()
+            
+            background_tasks.add_task(vector_embedding) #데이터 임베딩
+            
             return {"status": "success", "query": query, "new_saved": saved_count}
 
     except Exception as e:
