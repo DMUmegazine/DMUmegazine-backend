@@ -13,6 +13,7 @@ import ssl
 from datetime import datetime
 from fastapi import BackgroundTasks
 from app.services.vector_service import vector_embedding
+from app.services.vector_search import query_similar_news
 
 # /app 경로가 없을 경우 Python 모듈 탐색 경로에 추가
 if "/app" not in sys.path:
@@ -103,3 +104,14 @@ def collect_naver_news(query: str, background_tasks: BackgroundTasks, db: Sessio
         # 오류 발생 시 롤백
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/search")
+def search_ai_news(query: str):
+    """
+    프론트엔드에서 사용자가 입력한 키워드나 클릭한 카테고리명을 
+    쿼리로 받아 유사도 검색 결과를 반환합니다.[cite: 2, 4]
+    """
+    # 사용자가 입력한 query를 그대로 vector 로직에 전달합니다.
+    results = query_similar_news(query_text=query)
+    return results
