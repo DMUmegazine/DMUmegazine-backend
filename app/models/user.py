@@ -22,7 +22,6 @@ class NewsMetadata(Base):
     __tablename__ = "news_metadata" # ✅ 소문자 통일 및 2.0 반영
     news_id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     title = Column(Text, nullable=False)
-    summary = Column(Text)
     description = Column(Text)
     originallink = Column(Text, unique=True, nullable=False)
     link = Column(Text, nullable=False)
