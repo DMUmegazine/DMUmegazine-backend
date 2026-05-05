@@ -15,6 +15,7 @@ from fastapi import BackgroundTasks
 from app.services.vector_service import vector_embedding
 from app.services.vector_search import query_similar_news
 
+
 # /app 경로가 없을 경우 Python 모듈 탐색 경로에 추가
 if "/app" not in sys.path:
     sys.path.append("/app")
@@ -89,6 +90,7 @@ def collect_naver_news(query: str, background_tasks: BackgroundTasks, db: Sessio
                         originallink=link,
                         link=item.get("link"),
                         published_at=published_at,
+                        is_embedded=False,
                     )
                     db.add(new_news)
                     saved_count += 1

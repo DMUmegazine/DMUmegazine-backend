@@ -1,5 +1,5 @@
 # app/models/user.py
-from sqlalchemy import Column, String, DateTime, text, ForeignKey, Integer, Text
+from sqlalchemy import Column, String, DateTime, text, ForeignKey, Integer, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.session import Base
 
@@ -27,3 +27,5 @@ class NewsMetadata(Base):
     originallink = Column(Text, unique=True, nullable=False)
     link = Column(Text, nullable=False)
     published_at = Column(DateTime)
+    is_embedded  = Column(Boolean, default=False, nullable=False)
+    
