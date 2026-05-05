@@ -6,7 +6,6 @@ from app.db.session import get_db
 from app.models.user import NewsMetadata
 import urllib.request
 import json
-import uuid
 import urllib.parse
 import re
 import ssl
@@ -82,15 +81,13 @@ def collect_naver_news(query: str, background_tasks: BackgroundTasks, db: Sessio
                     except:
                         published_at = None  # 날짜 파싱 실패 시 None으로 저장
 
-                    # 텍스트 정제 후 DB 객체 생성
+                    # 텍스트 정제 후 DB 객체 생성 (news_id, is_embedded는 DB 자동 생성)
                     new_news = NewsMetadata(
-                        news_id=uuid.uuid4(),
                         title=clean_news_text(item.get("title")),
                         description=clean_news_text(item.get("description")),
                         originallink=link,
                         link=item.get("link"),
                         published_at=published_at,
-                        is_embedded=False,
                     )
                     db.add(new_news)
                     saved_count += 1
@@ -110,10 +107,7 @@ def collect_naver_news(query: str, background_tasks: BackgroundTasks, db: Sessio
 
 @router.get("/search")
 def search_ai_news(query: str):
-    """
-    프론트엔드에서 사용자가 입력한 키워드나 클릭한 카테고리명을 
-    쿼리로 받아 유사도 검색 결과를 반환합니다.[cite: 2, 4]
-    """
-    # 사용자가 입력한 query를 그대로 vector 로직에 전달합니다.
+
+    # 사용자가 입력한 query를 그대로 vector 로직에 전달
     results = query_similar_news(query_text=query)
     return results
