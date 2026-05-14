@@ -4,6 +4,7 @@ from app.db.session import engine, Base
 from app.api.auth import router as auth_router
 from app.models.user import User
 from app.api.news import router as news_router
+from app.api import news, magazine
 
 # DB 테이블 생성
 Base.metadata.create_all(bind=engine)
@@ -21,7 +22,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(news_router)
-                   
+app.include_router(magazine.router)
+
 @app.get("/")
 def home():
     return {"message": "MegaZine Backend Running!"}
