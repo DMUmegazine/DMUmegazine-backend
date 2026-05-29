@@ -15,3 +15,4 @@ httpx
 google-genai
 chromadb
 openai>=1.0.0
+apscheduler

@@ -2,16 +2,17 @@ import os
 import json
 import urllib.parse
 import re
-from openai import OpenAI
+import time
+from google import genai
 from app.services.vector_search import query_similar_news
 from app.db.session import SessionLocal
 from app.models.user import NewsMetadata
 
-# 💡 OpenAI 클라이언트 초기화 (생성용)
-_openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# 💡 OpenAI 대신 구글 Gemini 클라이언트 초기화
+_genai_client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
 
 def generate_ai_magazine(query: str):
-    # 1. 유사도 검색 (상위 3개 추출) - 검색은 기존 로직 유지 (Gemini 임베딩 활용)
+    # 1. 유사도 검색 (상위 3개 추출)
     search_results = query_similar_news(query_text=query, top_k=3)
     
     if not search_results:
@@ -79,22 +80,19 @@ def generate_ai_magazine(query: str):
     }}
     """
 
-    target_model = "gpt-4o-mini"
+    # 💡 사용할 Gemini 모델 지정 (최신 빠른 모델)
+    target_model = "gemini-2.5-flash"
 
     try:
-        print(f"[AI Attempt] OpenAI {target_model} 모델로 매거진 생성 중...", flush=True)
+        print(f"[AI Attempt] Google {target_model} 모델로 매거진 생성 중...", flush=True)
         
-        # 1. 요약 생성 (GPT API 호출)
-        summary_response = _openai_client.chat.completions.create(
+        # 1. 요약 생성 (Gemini API 호출)
+        summary_response = _genai_client.models.generate_content(
             model=target_model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that outputs strictly in JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5
+            contents=prompt
         )
 
-        raw_text = summary_response.choices[0].message.content.strip()
+        raw_text = summary_response.text.strip()
         
         # 정규식을 사용하여 JSON 블록 추출
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
@@ -107,28 +105,23 @@ def generate_ai_magazine(query: str):
                 "briefings": []
             }
 
-        # 2. 이미지 프롬프트 생성 (GPT API 호출)
+        # 2. 이미지 프롬프트 생성 (Gemini API 호출)
         image_prompt_req = f"Create a very simple, 5-word English image prompt for: '{query}'. Focus on objects, no people, no complex shadows."
         
-        image_res = _openai_client.chat.completions.create(
+        image_res = _genai_client.models.generate_content(
             model=target_model,
-            messages=[
-                {"role": "user", "content": image_prompt_req}
-            ],
-            temperature=0.7
+            contents=image_prompt_req
         )
         
         # 특수문자 완벽 제거 및 URL 인코딩
-        clean_prompt = image_res.choices[0].message.content.replace('\n', ' ').replace('\r', '').replace('"', '').replace("'", "").strip()
+        clean_prompt = image_res.text.replace('\n', ' ').replace('\r', '').replace('"', '').replace("'", "").strip()
         clean_prompt = re.sub(r'[^a-zA-Z0-9\s,]', '', clean_prompt)
         encoded_prompt = urllib.parse.quote(clean_prompt)
         
-        import time
         timestamp = int(time.time())
         raw_image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=800&height=800&nologo=true&t={timestamp}"
 
-        # 2. 💡 우리 백엔드 프록시를 거쳐가도록 주소 변경
-        # localhost:8000/magazine/proxy-image?url=원래주소 형태가 됩니다.
+        # 3. 우리 백엔드 프록시를 거쳐가도록 주소 변경
         proxy_url = f"http://localhost:8000/magazine/proxy-image?url={urllib.parse.quote(raw_image_url)}"
 
         print(f"[AI Success] 프록시 적용 URL: {proxy_url}", flush=True)
@@ -140,9 +133,9 @@ def generate_ai_magazine(query: str):
             "publishedAt": "방금 전",
             "briefings": parsed_summary.get("briefings", []),
             "relatedArticles": related_articles_response,
-            "imageUrl": proxy_url # 💡 여기에 프록시 주소를 넣어서 보냅니다.
+            "imageUrl": proxy_url 
         }
         
     except Exception as e:
         print(f"[AI Fatal] 생성 실패. (사유: {str(e)})", flush=True)
-        return {"error": f"OpenAI 생성 실패: {str(e)}"}
+        return {"error": f"Gemini 생성 실패: {str(e)}"}
