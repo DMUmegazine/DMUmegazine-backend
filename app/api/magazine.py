@@ -18,7 +18,7 @@ def get_magazine(query: str):
 
 @router.get("/proxy-image")
 async def proxy_image(url: str):
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # 💡 외부 이미지 서버에서 이미지를 대신 받아옵니다.
         response = await client.get(url)
         # 💡 받은 이미지 바이너리를 그대로 브라우저에 던져줍니다.
