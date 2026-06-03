@@ -90,6 +90,8 @@ def start_scheduler():
     # scheduler.add_job(collect_and_embed_news_job, 'cron', minute='*')
     # 실전용 오전 8시, 오후 8시 한번씩 실행 
     scheduler.add_job(collect_and_embed_news_job, 'cron', hour='8,20', minute=0)
+
+    scheduler.add_job(collect_and_embed_news_job, 'date')
     
     scheduler.start()
     print("[Scheduler] 🟢 뉴스 자동 수집 스케줄러가 시작되었습니다.", flush=True)

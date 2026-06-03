@@ -3,13 +3,13 @@ import json
 import urllib.parse
 import re
 import time
-from google import genai
+from openai import OpenAI
 from app.services.vector_search import query_similar_news
 from app.db.session import SessionLocal
 from app.models.user import NewsMetadata
 
-# 💡 OpenAI 대신 구글 Gemini 클라이언트 초기화
-_genai_client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+# 💡 구글 대신 다시 OpenAI 클라이언트로 초기화
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def generate_ai_magazine(query: str):
     # 1. 유사도 검색 (상위 3개 추출)
@@ -80,19 +80,20 @@ def generate_ai_magazine(query: str):
     }}
     """
 
-    # 💡 사용할 Gemini 모델 지정 (최신 빠른 모델)
-    target_model = "gemini-2.5-flash"
+    # 💡 사용할 OpenAI 모델 지정 (가장 빠르고 가성비 좋은 gpt-4o-mini)
+    target_model = "gpt-4o-mini"
 
     try:
-        print(f"[AI Attempt] Google {target_model} 모델로 매거진 생성 중...", flush=True)
+        print(f"[AI Attempt] OpenAI {target_model} 모델로 매거진 생성 중...", flush=True)
         
-        # 1. 요약 생성 (Gemini API 호출)
-        summary_response = _genai_client.models.generate_content(
+        # 1. 요약 생성 (OpenAI API 호출)
+        summary_response = client.chat.completions.create(
             model=target_model,
-            contents=prompt
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
         )
 
-        raw_text = summary_response.text.strip()
+        raw_text = summary_response.choices[0].message.content.strip()
         
         # 정규식을 사용하여 JSON 블록 추출
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
@@ -105,16 +106,17 @@ def generate_ai_magazine(query: str):
                 "briefings": []
             }
 
-        # 2. 이미지 프롬프트 생성 (Gemini API 호출)
+        # 2. 이미지 프롬프트 생성 (OpenAI API 호출)
         image_prompt_req = f"Create a very simple, 5-word English image prompt for: '{query}'. Focus on objects, no people, no complex shadows."
         
-        image_res = _genai_client.models.generate_content(
+        image_res = client.chat.completions.create(
             model=target_model,
-            contents=image_prompt_req
+            messages=[{"role": "user", "content": image_prompt_req}],
+            temperature=0.7
         )
         
         # 특수문자 완벽 제거 및 URL 인코딩
-        clean_prompt = image_res.text.replace('\n', ' ').replace('\r', '').replace('"', '').replace("'", "").strip()
+        clean_prompt = image_res.choices[0].message.content.replace('\n', ' ').replace('\r', '').replace('"', '').replace("'", "").strip()
         clean_prompt = re.sub(r'[^a-zA-Z0-9\s,]', '', clean_prompt)
         encoded_prompt = urllib.parse.quote(clean_prompt)
         
@@ -138,4 +140,4 @@ def generate_ai_magazine(query: str):
         
     except Exception as e:
         print(f"[AI Fatal] 생성 실패. (사유: {str(e)})", flush=True)
-        return {"error": f"Gemini 생성 실패: {str(e)}"}
+        return {"error": f"OpenAI 생성 실패: {str(e)}"}
