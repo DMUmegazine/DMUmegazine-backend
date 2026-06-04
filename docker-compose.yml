@@ -1,5 +1,7 @@
+# docker-compose.yml
 services:
   # ==================== DB ====================
+  # PostgreSQL 데이터베이스 컨테이너 구성
   db:
     image: postgres:15
     container_name: megazine-db
@@ -9,14 +11,15 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - ./db_data:/var/lib/postgresql/data
+      - ./db_data:/var/lib/postgresql/data # 로컬 폴더 마운트로 컨테이너 삭제 시에도 데이터 영속성 보장
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"] # DB가 통신 가능한 상태인지 주기적으로 확인
       interval: 5s
       timeout: 5s
       retries: 5
 
   # ==================== backend ====================
+  # FastAPI 백엔드 애플리케이션 컨테이너 구성
   backend:
     build: .
     container_name: megazine-backend
@@ -26,8 +29,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./chroma_data:/app/chroma_data
-      - ./:/app
+      - ./chroma_data:/app/chroma_data # 벡터 DB 임베딩 데이터 영속성 보장
+      - ./:/app # 핫 리로딩을 위한 소스코드 마운트
     depends_on:
       db:
-        condition: service_healthy # DB가 healthcheck를 통과한 후에만 백엔드 시작
+        condition: service_healthy # 의존성 보장: RDB가 완벽히 켜진 후 백엔드 기동
