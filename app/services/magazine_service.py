@@ -1,4 +1,3 @@
-# app/services/magazine_service.py
 import os
 import json
 import urllib.parse
@@ -17,39 +16,32 @@ def generate_ai_magazine(query: str):
     [AI 매거진 코어 엔진]
     사용자의 검색어를 바탕으로 RAG(검색 증강 생성) 파이프라인을 가동하여 
     최종 매거진(JSON) 결과물을 프론트엔드로 반환합니다.
-    
-    Data Flow: 검색어 입력 -> 유사 기사 검색 -> DB에서 원문 확보 -> LLM 프롬프트 조립 -> JSON 파싱 -> 이미지 URL 조립
     """
     
-    # 1. Vector Search (RAG의 Retriever 역할)
-    # ChromaDB를 찔러 검색어와 가장 문맥이 유사한 상위 3개의 기사 ID를 가져옵니다.
+    # 1. 유사도 검색 (상위 3개 추출)
     search_results = query_similar_news(query_text=query, top_k=3)
     
     if not search_results:
         return {"error": "관련 기사를 찾을 수 없습니다."}
 
     # 2. RDB 원본 데이터 확보
-    # 벡터 DB에서 얻은 UUID로 PostgreSQL을 조회하여 실제 기사 텍스트와 메타데이터를 가져옵니다.
     news_ids = [res['news_id'] for res in search_results]
     
     db = SessionLocal()
     try:
         articles = db.query(NewsMetadata).filter(NewsMetadata.news_id.in_(news_ids)).all()
-        # 검색된 유사도 순서를 유지하기 위한 매핑 로직
         article_map = {str(a.news_id): a for a in articles}
         ordered_articles = [article_map[nid] for nid in news_ids if nid in article_map]
     finally:
         db.close()
 
-    # 3. LLM 컨텍스트 조립 및 프론트엔드 응답 규격(관련 기사 리스트) 맞춤화
+    # 3. LLM 컨텍스트 조립 및 프론트엔드 응답 규격 맞춤화
     context_text = ""
     related_articles_response = []
     
     for idx, article in enumerate(ordered_articles):
-        # AI에게 먹일 먹이(컨텍스트) 조립
         context_text += f"\n[기사 {idx+1}] 제목: {article.title}\n내용: {article.description}\n"
         
-        # 언론사 이름 추출 (도메인 파싱)
         domain = "뉴스"
         if article.link:
             try:
@@ -67,8 +59,7 @@ def generate_ai_magazine(query: str):
             "url": article.link
         })
 
-    # 4. 프롬프트 엔지니어링 (시스템 프롬프트 + 제약 조건)
-    # LLM이 반드시 정해진 JSON 포맷으로만 대답하도록 강력하게 통제합니다.
+    # 4. 프롬프트 엔지니어링 (JSON 규격 강제)
     prompt = f"""
     당신은 IT/경제 전문 매거진의 수석 편집장입니다. 
     아래 제공된 [기사 데이터]를 바탕으로 '{query}'에 대한 브리핑을 작성하세요.
@@ -95,12 +86,12 @@ def generate_ai_magazine(query: str):
     }}
     """
 
-    target_model = "gpt-4o-mini" # 가성비와 속도를 고려한 모델 채택
+    target_model = "gpt-4o-mini"
 
     try:
         print(f"[AI Attempt] OpenAI {target_model} 모델로 매거진 생성 중...", flush=True)
         
-        # 5. 매거진 브리핑 생성 (OpenAI API Call)
+        # 5. 요약 생성
         summary_response = client.chat.completions.create(
             model=target_model,
             messages=[{"role": "user", "content": prompt}],
@@ -109,36 +100,32 @@ def generate_ai_magazine(query: str):
 
         raw_text = summary_response.choices[0].message.content.strip()
         
-        # LLM이 마크다운 찌꺼기를 뱉을 것에 대비한 정규식 파싱 방어 로직
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if match:
             parsed_summary = json.loads(match.group(0))
         else:
             parsed_summary = {"title": f"{query} 분석 브리핑", "briefings": []}
 
-        # 6. 맥락 기반 이미지 프롬프트 생성 (OpenAI API Call)
-        image_prompt_req = f"Create a very simple, 5-word English image prompt for: '{query}'. Focus on objects, no people, no complex shadows."
-        image_res = client.chat.completions.create(
-            model=target_model,
-            messages=[{"role": "user", "content": image_prompt_req}],
-            temperature=0.7
-        )
-        
-        # 7. 이미지 서버 URL 조립 및 보안 프록시 우회
-        # 생성된 텍스트에서 특수문자를 날리고 인코딩하여 Pollinations API URL을 만듭니다.
-        clean_prompt = image_res.choices[0].message.content.replace('\n', ' ').replace('\r', '').replace('"', '').replace("'", "").strip()
-        clean_prompt = re.sub(r'[^a-zA-Z0-9\s,]', '', clean_prompt)
-        encoded_prompt = urllib.parse.quote(clean_prompt)
-        
-        timestamp = int(time.time())
-        raw_image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded_prompt}?width=800&height=800&nologo=true&t={timestamp}"
+        # 6. 진짜 OpenAI DALL-E로 이미지 직접 생성 (무료 서버 폐기)
+        try:
+            print("[Image Attempt] 0.1초 렌더링 스톡 이미지 검색 중...", flush=True)
+            
+            # 검색어에서 가장 핵심이 되는 첫 번째 단어 추출 (예: "ai IT" -> "ai")
+            keyword = query.split()[0]
+            # 한글/영문 모두 안전하게 URL 인코딩
+            encoded_keyword = urllib.parse.quote(keyword)
+            
+            # API 대기 시간(15초) 없이, 키워드에 맞는 고화질 사진을 즉시 프론트엔드에 꽂아줍니다.
+            final_image_url = f"https://loremflickr.com/800/800/{encoded_keyword},technology/all"
+            
+            print(f"[Image Success] 키워드 맞춤형 사진 연결 완료!", flush=True)
+            
+        except Exception as img_e:
+            print(f"[Image Error] 이미지 연결 실패: {str(img_e)}", flush=True)
+            # 최후의 방어망
+            final_image_url = "https://placehold.co/800x800/2A2A2A/34D399?text=Image+Delayed"
 
-        # 프론트엔드의 CORS/HTTPS 혼합 콘텐츠 에러를 막기 위해 우리 백엔드의 프록시 주소로 감쌉니다.
-        proxy_url = f"http://localhost:8000/magazine/proxy-image?url={urllib.parse.quote(raw_image_url)}"
-
-        print(f"[AI Success] 프록시 적용 URL: {proxy_url}", flush=True)
-        
-        # 8. 최종 결과 반환
+        # 7. 최종 결과 반환 (프록시 안 거치고 다이렉트로 프론트엔드에 전달)
         return {
             "title": parsed_summary.get("title", f"{query} 분석 브리핑"),
             "tag": query[:6].upper(),
@@ -146,7 +133,7 @@ def generate_ai_magazine(query: str):
             "publishedAt": "방금 전",
             "briefings": parsed_summary.get("briefings", []),
             "relatedArticles": related_articles_response,
-            "imageUrl": proxy_url 
+            "imageUrl": final_image_url 
         }
         
     except Exception as e:

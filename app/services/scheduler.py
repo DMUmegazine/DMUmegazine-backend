@@ -1,4 +1,3 @@
-# app/services/scheduler.py
 import os
 import urllib.request
 import json
@@ -29,12 +28,16 @@ def collect_and_embed_news_job():
     db = SessionLocal()
     try:
         total_saved = 0
-        # 💡 중복 데이터 방어 핵심 로직 1: 트랜잭션 도중 발생하는 교집합(예: IT이면서 경제인 뉴스) 방어망
         seen_links = set() 
         
         for topic in TOPICS:
             encText = urllib.parse.quote(f"{topic} 뉴스") 
-            url = f"[https://openapi.naver.com/v1/search/news.json?query=](https://openapi.naver.com/v1/search/news.json?query=){encText}&display=10"
+            
+            # 💡 [최종 방어] 채팅창이 절대 링크로 변환할 수 없도록 URL을 산산조각 내서 조립합니다.
+            api_scheme = "https"
+            api_host = "openapi.naver.com"
+            api_path = "/v1/search/news.json"
+            url = f"{api_scheme}://{api_host}{api_path}?query={encText}&display=10"
             
             request = urllib.request.Request(url)
             request.add_header("X-Naver-Client-Id", client_id)
@@ -46,15 +49,13 @@ def collect_and_embed_news_job():
                 for item in items:
                     link = item.get("originallink")
                     
-                    # 장바구니 검사: 방금 전 다른 주제에서 담은 기사라면 가볍게 Pass
                     if link in seen_links:
                         continue
                         
-                    # 중복 데이터 방어 핵심 로직 2: DB 단 검사. 이미 과거에 적재된 기사인지 2차 확인
                     exists = db.query(NewsMetadata).filter(NewsMetadata.originallink == link).first()
                     
                     if not exists:
-                        seen_links.add(link) # 완전히 새로운 기사만 장바구니에 승인
+                        seen_links.add(link) 
                         
                         pub_date_str = item.get("pubDate", "")
                         try:
@@ -62,7 +63,6 @@ def collect_and_embed_news_job():
                         except:
                             published_at = None
                         
-                        # 텍스트 내 HTML 태그 정제 후 ORM 객체 생성
                         new_news = NewsMetadata(
                             title=clean_news_text(item.get("title")),
                             description=clean_news_text(item.get("description")),
@@ -73,10 +73,9 @@ def collect_and_embed_news_job():
                         db.add(new_news)
                         total_saved += 1
                         
-        db.commit() # 트랜잭션 일괄 커밋
+        db.commit() 
         print(f"[Scheduler] ✅ {total_saved}건의 새 뉴스 RDB 저장 완료.", flush=True)
         
-        # 신규 데이터가 적재되었을 때만 벡터 임베딩 파이프라인 호출
         if total_saved > 0:
             print("[Scheduler] 🚀 벡터 DB 임베딩 시작...", flush=True)
             vector_embedding() 
@@ -87,7 +86,6 @@ def collect_and_embed_news_job():
         print(f"[Scheduler] ❌ 오류 발생: {str(e)}", flush=True)
     finally:
         db.close()
-
 
 def start_scheduler():
     """
@@ -100,7 +98,7 @@ def start_scheduler():
     scheduler.add_job(collect_and_embed_news_job, 'cron', hour='8,20', minute=0)
 
     # 💡 킥스타터: 도커 서버 구동 시 비동기로 즉시 1회 가동하여 초기 데이터를 셋업
-    scheduler.add_job(collect_and_embed_news_job, 'date')
+    #scheduler.add_job(collect_and_embed_news_job, 'date')
     
     scheduler.start()
     print("[Scheduler] 🟢 뉴스 자동 수집 스케줄러가 시작되었습니다.", flush=True)
